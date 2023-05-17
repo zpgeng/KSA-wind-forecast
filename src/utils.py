@@ -192,3 +192,21 @@ def draw_outperformance_mse_knots(lon_knots, lat_knots, esn_err, per_err):
     cbar = plt.colorbar(imc, cax=grid.cbar_axes[0])
     cbar.ax.tick_params(labelsize=18)
     plt.tight_layout()
+
+def ts_product(A, B, m, nh, n):
+    """
+    A and B are of type nd.array, A is the matrix which has dimension n * 1,
+    B is the matrix of dimemsion nh * (m * n), which can be divided into nh * m
+    submatrices of dimension 1 * n.
+
+    Output the Tracy-Singh product. 
+    """
+    dim_A = A.shape
+    dim_B = B.shape
+    if (dim_B[0] != nh) or (dim_B[1] % m != 0) or (dim_B[1] % n != 0) or (dim_A[0] != 1) or (dim_A[1] != n):
+        raise Exception("You have inputed wrong matrices A and B, or matrices A with only one dimension")
+    res = np.zeros((nh, m * n**2))
+    for i in range(nh):
+        for j in range(m):
+            res[i, (j * n**2):((j + 1) * n**2)] = np.kron(A, B[i, (j * n):((j + 1) * n)])
+    return res
