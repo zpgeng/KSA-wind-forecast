@@ -21,6 +21,10 @@ class ESN:
         self.device = device
         
     def standardize_in_sample(self, is_validation = False):
+        """
+        Before regression, we need to standardize the covariates and responses for the Ridge to be valid.
+        """
+
         if(is_validation):
             self.inSampleEmb_len = self.index.validate_start - self.m
         else:
@@ -48,6 +52,8 @@ class ESN:
     def standardize_in_sample_nn(self, is_validation = False):
         """
         This is the function of in-sample standardization of nearest neighbour filter implementation
+        
+        Finished && unchecked
         """
         if(is_validation):
             self.inSampleEmb_len = self.index.validate_start - self.m
@@ -55,18 +61,18 @@ class ESN:
             self.inSampleEmb_len = self.index.test_start - self.m
             
         #### X
-        self.inSampleX = np.repeat(np.nan, self.inSampleEmb_len * self.m * self.numLocs).reshape(self.inSampleEmb_len, self.m, -1)
-        for i in range(self.inSampleEmb_len):
-            self.inSampleX[i, ] = self.data.ts[range(i, (self.m + i))]
-
-        self.inSampleX_mean = self.inSampleX.mean(axis=0)
-        self.inSampleX_std = self.inSampleX.std(axis=0)
+        self.inSampleX_nn = np.repeat(np.nan, self.inSampleEmb_len * self.m * self.numLocs * self.numLocs).reshape(self.inSampleEmb_len, self.m, self.numLocs, -1)
             
-        self.inSampleX = (self.inSampleX - self.inSampleX_mean) / self.inSampleX_std
         # Start the pop-up of X
+        for _ in range(self.inSampleEmb_len):
+            self.inSampleX_nn[_, ] = np.tile(self.data.ts[range(_, (self.m + _))], self.numLocs).reshape(self.m, self.numLocs, -1)
+
+        self.inSampleX_nn_mean = self.inSampleX_nn.mean(axis=0)
+        self.inSampleX_nn_std = self.inSampleX_nn.std(axis=0)
         
+        self.inSampleX_nn = (self.inSampleX_nn - self.inSampleX_nn_mean) / self.inSampleX_nn_std
         # End the pop-up of X
-        self.inSampleDesignMatrix = np.column_stack([np.repeat(1, self.inSampleEmb_len), self.inSampleX.reshape(self.inSampleEmb_len, -1)])
+        self.inSampleDesignMatrix_nn = np.column_stack([np.repeat(1, self.inSampleEmb_len), self.inSampleX_nn.reshape(self.inSampleEmb_len, -1)])
         
         #### Y
         self.inSampleY = self.data.ts[range(self.m, self.inSampleEmb_len + self.m)]
@@ -74,7 +80,7 @@ class ESN:
         self.inSampleY_mean=self.inSampleY.mean(axis=0)
         self.inSampleY_std=self.inSampleY.std(axis=0)
 
-        self.inSampleY = (self.inSampleY-self.inSampleY_mean)/self.inSampleY_std
+        self.inSampleY = (self.inSampleY - self.inSampleY_mean) / self.inSampleY_std
 
     def standardize_out_sample(self, is_validation = False):
         if(is_validation):
@@ -96,21 +102,25 @@ class ESN:
 
     def standardize_out_sample_nn(self, is_validation = False):
         if(is_validation):
-            self.outSampleEmb_index = np.arange(self.index.validate_start, self.index.validate_end+1)
+            self.outSampleEmb_index = np.arange(self.index.validate_start, self.index.validate_end + 1)
         else:
-            self.outSampleEmb_index = np.arange(self.index.test_start, self.index.test_end+1)
+            self.outSampleEmb_index = np.arange(self.index.test_start, self.index.test_end + 1)
             
         self.outSampleEmb_len = len(self.outSampleEmb_index)
         
         #### X
-        self.outSampleX = np.zeros((self.outSampleEmb_len, self.m, self.numLocs)) * np.nan
-        for i,ind in enumerate(self.outSampleEmb_index):
-            self.outSampleX[i,] = self.data.ts[range(ind - self.m, ind)]
-        self.outSampleX = (self.outSampleX - self.inSampleX_mean)/self.inSampleX_std
-        self.outSampleDesignMatrix=np.column_stack([np.repeat(1,self.outSampleEmb_len),self.outSampleX.reshape(self.outSampleEmb_len,-1)])
+        self.outSampleX_nn = np.zeros((self.outSampleEmb_len, self.m, self.numLocs, self.numLocs)) * np.nan
+
+        # Start the pop-up of X
+        for _, ind in enumerate(self.outSampleEmb_index):
+            self.outSampleX_nn[_,] = np.tile(self.data.ts[range(ind - self.m, ind)], self.numLocs).reshape(self.m, self.numLocs, -1)
+        
+        self.outSampleX_nn = (self.outSampleX_nn - self.inSampleX_nn_mean) / self.inSampleX_nn_std
+        self.outSampleDesignMatrix_nn = np.column_stack([np.repeat(1, self.outSampleEmb_len), self.outSampleX_nn.reshape(self.outSampleEmb_len, -1)])
+        # End the pop-up of X
 
         #### Y
-        self.outSampleY = (self.data.ts[self.outSampleEmb_index] - self.inSampleY_mean)/self.inSampleY_std
+        self.outSampleY_nn = (self.data.ts[self.outSampleEmb_index] - self.inSampleY_mean) / self.inSampleY_std
 
     def get_w_and_u(self):
         wMat = np.random.uniform(-self.wWidth,self.wWidth,self.nh*self.nh).reshape(self.nh,-1)
@@ -136,36 +146,88 @@ class ESN:
         return wMatScaled, uMat
     
     # Start the ESN-NNF
-    def get_w_td_and_u_td(self):
-        wMat = np.random.uniform(-self.wWidth,self.wWidth,self.nh*self.nh).reshape(self.nh,-1)
-        uMat = np.random.uniform(-self.uWidth,self.uWidth,self.nh*self.nColsU).reshape(self.nColsU,-1)
+    def get_wtd(self):
+        wMat = np.random.uniform(-self.wWidth, self.wWidth, self.nh * self.nh).reshape(self.nh, -1)
 
         #Make W Matrix Sparse 
         for i in range(self.nh):
-            numReset=self.nh-np.random.binomial(self.nh,self.wSparsity)
+            numReset = self.nh - np.random.binomial(self.nh, self.wSparsity)
             resetIndex = np.random.choice(self.nh, numReset, replace = False)
-            wMat[resetIndex,i]=0
-
-        #Make U Matrix Sparse 
-        for i in range(self.nColsU):
-            numReset = self.nh-np.random.binomial(self.nh,self.uSparsity)
-            resetIndex = np.random.choice(self.nh, numReset, replace = False)
-            uMat[i,resetIndex]=0
+            wMat[resetIndex, i] = 0
 
         #Scale W Matrix
-        v = eigh(wMat,eigvals_only=True)
-        spectralRadius = max(abs(v))
+        eigenvec = eigh(wMat, eigvals_only=True)
+        spectralRadius = max(abs(eigenvec))
         zero_hf = np.zeros((self.nh, self.nf))
         zero_fh = np.zeros((self.nf, self.nh))
         zero_ff = np.zeros((self.nf, self.nf))
         flag_1 = np.concatenate((wMat, zero_hf), axis=-1)
         flag_2 = np.concatenate((zero_fh, zero_ff), axis=-1)
         wMat_new = np.concatenate((flag_1, flag_2), axis=0)
-        wMatScaled=wMat_new*self.delta/spectralRadius
+        wMatScaled = wMat_new * self.delta / spectralRadius
         
-        return wMatScaled, uMat
+        return wMatScaled
+    
+    # Start the ESN-NNF
+    def get_utd(self):
+        """
+        Generate U tilde matrix.
+        """
+
+        uMat = np.random.uniform(-self.uWidth, self.uWidth, self.nh * self.nColsU).reshape(self.nColsU, -1)
+
+        #Make U Matrix Sparse 
+        for i in range(self.nColsU):
+            numReset = self.nh - np.random.binomial(self.nh, self.uSparsity)
+            resetIndex = np.random.choice(self.nh, numReset, replace = False)
+            uMat[i, resetIndex] = 0
+
+        return uMat
     
     def get_hMat(self,wMat,uMat):
+        #Create H Matrix in-sample
+        hMatDim = 2*self.nh
+        uProdMat=self.inSampleDesignMatrix.dot(uMat);
+
+        hMat = np.zeros((hMatDim,self.inSampleEmb_len))
+
+        xTemp = uProdMat[0,:]
+        xTemp = np.tanh(xTemp)
+
+        hMat[0:self.nh,0] = xTemp
+        hMat[self.nh:,0] = xTemp*xTemp
+
+        for t in range(1,self.inSampleEmb_len):
+            xTemp = wMat.dot(xTemp)+uProdMat[t,:]
+            xTemp = np.tanh(xTemp)
+
+            hMat[0:self.nh,t] = xTemp*self.alpha + hMat[0:self.nh,t-1]*(1-self.alpha)
+            hMat[self.nh:,t] = hMat[0:self.nh,t]*hMat[0:self.nh,t]
+
+        #Create H Matrix out-sample
+        uProdMatOutSample = self.outSampleDesignMatrix.dot(uMat)
+        hMatOutSample = np.zeros((self.outSampleEmb_len,hMatDim))
+
+        xTemp = wMat.dot(xTemp)+uProdMatOutSample[0,:]
+        xTemp = np.tanh(xTemp)
+
+        hMatOutSample[0,0:self.nh] = xTemp
+        hMatOutSample[0,self.nh:] = xTemp*xTemp
+
+        for t in range(1,self.outSampleEmb_len):
+            xTemp = wMat.dot(xTemp)+uProdMatOutSample[t,:]
+            xTemp = np.tanh(xTemp)
+
+            hMatOutSample[t,0:self.nh] = xTemp*self.alpha + hMatOutSample[t-1,0:self.nh]*(1-self.alpha)
+            hMatOutSample[t,self.nh:] = hMatOutSample[t,0:self.nh]*hMatOutSample[t,0:self.nh]
+
+        return hMat, hMatOutSample
+    
+    def get_hMat_nn(self,wMat,uMat):
+        """
+        Nearest neighbor version.
+        """
+
         #Create H Matrix in-sample
         hMatDim = 2*self.nh
         uProdMat=self.inSampleDesignMatrix.dot(uMat);

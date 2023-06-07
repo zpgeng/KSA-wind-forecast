@@ -195,7 +195,7 @@ def draw_outperformance_mse_knots(lon_knots, lat_knots, esn_err, per_err):
 
 def ts_product(A, B, m, nh, n):
     """
-    A and B are of type nd.array, A is the matrix which has dimension n * 1,
+    A and B are of type nd.array, A is the matrix which has dimension 1 * n,
     B is the matrix of dimemsion nh * (m * n), which can be divided into nh * m
     submatrices of dimension 1 * n.
 
