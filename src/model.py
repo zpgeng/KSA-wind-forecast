@@ -10,8 +10,8 @@ class ESN:
         self.data = data
         self.index = index
         
-        self.ensembleLen = 100 # Ensemble length, default set to 100
-        self.numTimePred = 3 # number of time lags to predict, T+1, T+2, ..., T+k
+        self.ensembleLen = 2 # Ensemble length, default set to 100
+        self.numTimePred = 1 # number of time lags to predict, T+1, T+2, ..., T+k
         
         # self.tauEmb = 1 # number of lead time embedded
     
