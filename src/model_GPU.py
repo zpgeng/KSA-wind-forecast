@@ -337,6 +337,11 @@ class ESN:
     def cross_validation(self, cv_para):
         '''
             Now fully transformed to GPU version.
+            Haven't check the correctness of this function, need to update the function adaptively.
+            
+            1. First figure out what is the CV is this case
+            2. Then apply the scheme
+            
             Input: 
                 cv_para: the cross-validation parameter [m, nh, ridge, delta, alpha, wWidth, uWidth, wSparsity, uSparsity]
 
@@ -350,7 +355,7 @@ class ESN:
         self.numLocs = self.data.ts.shape[1]
         
         self.m, self.nh, self.ridge, self.delta, self.alpha, self.wWidth, self.uWidth, self.wSparsity, self.uSparsity = cv_para; 
-    
+        
         self.m = int(self.m)
         self.nh = int(self.nh)
         
